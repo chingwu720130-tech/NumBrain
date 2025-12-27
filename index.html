@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>數獨與數學練習產生器 - 吳淑菁 管理師設計</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
+
+        :root {
+            --print-margin: 15mm;
+            --main-bg: #fdfbf7;
+            --sidebar-bg: #f0fdfa;
+            --teal-primary: #0d9488;
+        }
+
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: var(--main-bg);
+            color: #334155;
+            overflow-x: hidden;
+        }
+
+        /* A4 紙張列印設定 */
+        @media print {
+            @page {
+                size: A4;
+                margin: 0;
+            }
+            body { background: white !important; padding: 0 !important; margin: 0 !important; }
+            .no-print { display: none !important; }
+            .print-page {
+                width: 210mm;
+                height: 297mm;
+                padding: var(--print-margin);
+                margin: 0 auto;
+                page-break-after: always;
+                box-sizing: border-box;
+                position: relative;
+                display: flex;
+                flex-direction: column;
+                background: white !important;
+            }
+            .print-page:last-child { page-break-after: auto; }
+        }
+
+        /* 儀表板佈局 */
+        .dashboard-container {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        .sidebar {
+            width: 320px;
+            background-color: var(--sidebar-bg);
+            border-right: 1px solid #ccfbf1;
+            padding: 1.5rem;
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+            z-index: 40;
+        }
+
+        .main-content {
+            margin-left: 320px;
+            flex-grow: 1;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        @media (max-width: 1024px) {
+            .sidebar { width: 100%; position: relative; height: auto; }
+            .main-content { margin-left: 0; }
+            .dashboard-container { flex-direction: column; }
+        }
+
+        /* 數獨格子 */
+        .sudoku-grid {
+            display: grid;
+            border: 2px solid #000;
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            background-color: #000;
+            gap: 1px;
+        }
+        .cell {
+            background-color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+        }
+        .border-r-bold { border-right: 3.5px solid #000 !important; }
+        .border-b-bold { border-bottom: 3.5px solid #000 !important; }
+
+        /* 數學題目排版 */
+        .math-item {
+            display: flex;
+            align-items: center;
+            font-size: 1.25rem;
+            padding: 12px;
+            border-bottom: 2px dashed #e2e8f0;
+        }
+        .ans-text { color: #ef4444; font-weight: bold; }
+
+        .preview-container {
+            width: 210mm;
+            min-height: 297mm;
+            background: white;
+            padding: var(--print-margin);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.06);
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            border-radius: 4px;
+            margin-bottom: 3rem;
+        }
+
+        .logo-box { width: 100%; max-width: 150px; height: 60px; object-fit: contain; }
+    </style>
+</head>
+<body class="p-0 m-0">
+
+    <div class="dashboard-container">
+        <!-- 側邊欄設定區 -->
+        <aside class="sidebar no-print">
+            <div class="flex flex-col items-center mb-8">
+                <!-- 網頁最上方 Logo -->
+                <img id="webLogo" src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTN49SX0y6kDNLFOnqemB60ZNlwNYVuOUYFxg&s" alt="Logo" class="w-32 mb-4 drop-shadow-sm">
+                <h2 class="text-xl font-black text-teal-800 tracking-tighter">練習題產生器</h2>
+                <p class="text-[10px] text-teal-600 font-bold mt-1">設計：吳淑菁 管理師</p>
+            </div>
+
+            <div class="space-y-6">
+                <!-- 基本設定區 -->
+                <section class="bg-white p-4 rounded-2xl shadow-sm border border-teal-100">
+                    <h3 class="text-sm font-black text-teal-700 mb-3 flex items-center gap-2">
+                        <span class="w-2 h-5 bg-teal-500 rounded-full"></span> 基本設定
+                    </h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="text-[11px] font-bold text-slate-400 block mb-1">產出類型</label>
+                            <select id="mainType" class="w-full bg-slate-50 border border-slate-200 p-2 rounded-lg text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-teal-400" onchange="togglePanel()">
+                                <option value="sudoku">🧩 數獨練習</option>
+                                <option value="math">➕ 數學計算</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-[11px] font-bold text-slate-400 block mb-1">標題名稱</label>
+                            <input type="text" id="customTitle" value="樂齡腦力開發練習" class="w-full bg-slate-50 border border-slate-200 p-2 rounded-lg text-sm font-bold text-slate-700">
+                        </div>
+                        <div>
+                            <label class="text-[11px] font-bold text-slate-400 block mb-1">標題大小 (<span id="titleSizeDisp">24</span>px)</label>
+                            <input type="range" id="titleSize" min="18" max="28" value="24" class="w-full accent-teal-500" oninput="document.getElementById('titleSizeDisp').innerText = this.value">
+                        </div>
+                        <div>
+                            <label class="text-[11px] font-bold text-slate-400 block mb-1">更改 Logo</label>
+                            <input type="file" id="logoIn" accept="image/*" class="text-[10px] text-slate-400 file:bg-teal-50 file:border-0 file:rounded-lg file:px-2 file:py-1 file:text-teal-700 file:font-bold" onchange="handleLogo(event)">
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 規格設定區 -->
+                <section id="sudokuPanel" class="bg-white p-4 rounded-2xl shadow-sm border border-sky-100">
+                    <h3 class="text-sm font-black text-sky-700 mb-3 flex items-center gap-2">
+                        <span class="w-2 h-5 bg-sky-500 rounded-full"></span> 數獨規格
+                    </h3>
+                    <div class="space-y-4">
+                        <div>
+                            <select id="sudokuSpec" class="w-full bg-slate-50 border border-slate-200 p-2 rounded-lg text-sm font-bold">
+                                <option value="4-8">4x4 (8題/頁)</option>
+                                <option value="4-6">4x4 (6題/頁)</option>
+                                <option value="6-6">6x6 (6題/頁)</option>
+                                <option value="6-4">6x4 (4題/頁)</option>
+                                <option value="9-4">9x9 (4題/頁)</option>
+                                <option value="9-2">9x9 (2題/頁)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-[11px] font-bold text-slate-400 block mb-1">難易度</label>
+                            <select id="sudokuDiff" class="w-full bg-slate-50 border border-slate-200 p-2 rounded-lg text-sm font-bold">
+                                <option value="20">新手 (提示多)</option>
+                                <option value="35">簡單</option>
+                                <option value="50" selected>中等</option>
+                                <option value="65">高手</option>
+                                <option value="80">困難 (提示少)</option>
+                            </select>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="mathPanel" class="hidden bg-white p-4 rounded-2xl shadow-sm border border-amber-100">
+                    <h3 class="text-sm font-black text-amber-700 mb-3 flex items-center gap-2">
+                        <span class="w-2 h-5 bg-amber-500 rounded-full"></span> 數學設定
+                    </h3>
+                    <div class="space-y-4">
+                        <div class="flex gap-1 flex-wrap">
+                            <label class="text-[10px] bg-amber-50 text-amber-700 px-2 py-1 rounded-lg border border-amber-200 cursor-pointer font-bold"><input type="checkbox" class="op-chk mr-1" value="+" checked>加</label>
+                            <label class="text-[10px] bg-amber-50 text-amber-700 px-2 py-1 rounded-lg border border-amber-200 cursor-pointer font-bold"><input type="checkbox" class="op-chk mr-1" value="-">減</label>
+                            <label class="text-[10px] bg-amber-50 text-amber-700 px-2 py-1 rounded-lg border border-amber-200 cursor-pointer font-bold"><input type="checkbox" class="op-chk mr-1" value="*">乘</label>
+                            <label class="text-[10px] bg-amber-50 text-amber-700 px-2 py-1 rounded-lg border border-amber-200 cursor-pointer font-bold"><input type="checkbox" class="op-chk mr-1" value="/">除</label>
+                        </div>
+                        <select id="mathDiff" class="w-full bg-slate-50 border border-slate-200 p-2 rounded-lg text-sm font-bold">
+                            <option value="10">簡單 (十位數)</option>
+                            <option value="500">簡單 (1-500)</option>
+                            <option value="1000">中等 (100-1000)</option>
+                            <option value="9999">困難 (1000-9999)</option>
+                        </select>
+                        <select id="mathCount" class="w-full bg-slate-50 border border-slate-200 p-2 rounded-lg text-sm font-bold">
+                            <option value="20">每頁 20 題</option>
+                            <option value="26">每頁 26 題</option>
+                            <option value="34">每頁 34 題</option>
+                        </select>
+                    </div>
+                </section>
+
+                <!-- 產出設定區 -->
+                <section class="bg-white p-4 rounded-2xl shadow-sm border border-orange-100">
+                    <h3 class="text-sm font-black text-orange-700 mb-3 flex items-center gap-2">
+                        <span class="w-2 h-5 bg-orange-500 rounded-full"></span> 列印與份數
+                    </h3>
+                    <div class="grid grid-cols-2 gap-2 mb-4">
+                        <div>
+                            <label class="text-[10px] font-bold text-slate-400 block">份數</label>
+                            <input type="number" id="copies" value="1" min="1" max="20" class="w-full bg-slate-50 border border-slate-200 p-2 rounded-lg text-sm font-bold">
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-bold text-slate-400 block">答案卷</label>
+                            <select id="ansMode" class="w-full bg-slate-50 border border-slate-200 p-2 rounded-lg text-[11px] font-bold">
+                                <option value="none">無答案</option>
+                                <option value="next">題目後</option>
+                                <option value="last">總結後</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button onclick="renderAll()" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-black py-4 rounded-2xl shadow-lg transition-all active:scale-95 mb-2">
+                        🚀 產出練習卷
+                    </button>
+                    <p class="text-[9px] text-orange-400 text-center font-bold">預覽後請按 Ctrl+P 列印</p>
+                </section>
+            </div>
+        </aside>
+
+        <!-- 主區域：預覽題目卷 -->
+        <main class="main-content">
+            <div id="outputArea" class="flex flex-col items-center">
+                <!-- 初始引導文字 -->
+                <div class="no-print text-center py-40 opacity-20">
+                    <div class="text-9xl mb-6">📝</div>
+                    <p class="text-2xl font-black">請設定參數後點擊產出</p>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // 預設 Logo
+        let currentLogo = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTN49SX0y6kDNLFOnqemB60ZNlwNYVuOUYFxg&s";
+
+        function handleLogo(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => { 
+                    currentLogo = event.target.result; 
+                    document.getElementById('webLogo').src = currentLogo; // 更新網頁側欄 Logo
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function togglePanel() {
+            const type = document.getElementById('mainType').value;
+            document.getElementById('sudokuPanel').classList.toggle('hidden', type !== 'sudoku');
+            document.getElementById('mathPanel').classList.toggle('hidden', type !== 'math');
+        }
+
+        // --- 核心邏輯：數獨生成 ---
+        function getSudokuBoard(size) {
+            const board = Array.from({length: size}, () => Array(size).fill(0));
+            const subW = size === 9 ? 3 : (size === 6 ? 3 : 2);
+            const subH = size === 9 ? 3 : (size === 6 ? 2 : 2);
+            let nums = Array.from({length: size}, (_, i) => i + 1);
+            nums.sort(() => Math.random() - 0.5);
+
+            for (let r = 0; r < size; r++) {
+                for (let c = 0; c < size; c++) {
+                    const shift = Math.floor(r / subH) + (r % subH) * subW;
+                    board[r][c] = nums[(c + shift) % size];
+                }
+            }
+            return board;
+        }
+
+        function digHoles(board, holes) {
+            const size = board.length;
+            const puzzle = board.map(row => [...row]);
+            let count = 0;
+            while (count < holes) {
+                let r = Math.floor(Math.random() * size);
+                let c = Math.floor(Math.random() * size);
+                if (puzzle[r][c] !== "") {
+                    puzzle[r][c] = "";
+                    count++;
+                }
+            }
+            return puzzle;
+        }
+
+        // --- 核心邏輯：數學生成 ---
+        function generateMathProblem(diff, ops) {
+            const op = ops[Math.floor(Math.random() * ops.length)];
+            let n1, n2, ans;
+            const d = parseInt(diff);
+
+            if (d === 10) { n1 = r(1, 99); n2 = r(1, 99); }
+            else if (d === 500) { n1 = r(1, 500); n2 = r(1, 500); }
+            else if (d === 1000) { n1 = r(100, 1000); n2 = r(100, 1000); }
+            else { n1 = r(1000, 9999); n2 = r(1000, 9999); }
+
+            if (op === '+') ans = n1 + n2;
+            else if (op === '-') { 
+                if (n1 < n2) [n1, n2] = [n2, n1];
+                ans = n1 - n2;
+            } else if (op === '*') {
+                if (d > 500) { n1 = r(10, 50); n2 = r(2, 12); } 
+                else { n1 = r(2, 9); n2 = r(2, 9); }
+                ans = n1 * n2;
+            } else {
+                n2 = r(2, 12);
+                ans = r(1, 12);
+                n1 = n2 * ans;
+            }
+            return { q: `${n1} ${op === '*' ? '×' : (op === '/' ? '÷' : op)} ${n2} = `, a: ans };
+        }
+        function r(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+
+        // --- 渲染頁面 ---
+        function renderAll() {
+            const output = document.getElementById('outputArea');
+            output.innerHTML = "";
+            const type = document.getElementById('mainType').value;
+            const copyCount = parseInt(document.getElementById('copies').value);
+            const ansMode = document.getElementById('ansMode').value;
+            
+            let allPages = [];
+
+            for (let c = 0; c < copyCount; c++) {
+                if (type === 'sudoku') {
+                    const spec = document.getElementById('sudokuSpec').value.split('-');
+                    const size = parseInt(spec[0]);
+                    const perPage = parseInt(spec[1]);
+                    const holePercent = parseInt(document.getElementById('sudokuDiff').value);
+                    const holes = Math.floor(size * size * (holePercent / 100));
+
+                    const pageData = [];
+                    for (let i = 0; i < perPage; i++) {
+                        const board = getSudokuBoard(size);
+                        const puzzle = digHoles(board, holes);
+                        pageData.push({ puzzle, board, size });
+                    }
+                    allPages.push({ type: 'sudoku', data: pageData, isAns: false });
+                    if (ansMode !== 'none') allPages.push({ type: 'sudoku', data: pageData, isAns: true });
+                } else {
+                    const ops = Array.from(document.querySelectorAll('.op-chk:checked')).map(el => el.value);
+                    if (ops.length === 0) { alert("請選擇運算類型"); return; }
+                    const diff = document.getElementById('mathDiff').value;
+                    const count = parseInt(document.getElementById('mathCount').value);
+                    
+                    const pageData = [];
+                    for (let i = 0; i < count; i++) {
+                        pageData.push(generateMathProblem(diff, ops));
+                    }
+                    allPages.push({ type: 'math', data: pageData, isAns: false });
+                    if (ansMode !== 'none') allPages.push({ type: 'math', data: pageData, isAns: true });
+                }
+            }
+
+            if (ansMode === 'last') {
+                const questions = allPages.filter(p => !p.isAns);
+                const answers = allPages.filter(p => p.isAns);
+                allPages = [...questions, ...answers];
+            }
+
+            allPages.forEach(p => {
+                output.appendChild(createPage(p));
+            });
+        }
+
+        function createPage(pageObj) {
+            const div = document.createElement('div');
+            div.className = "preview-container print-page";
+            
+            const titleText = document.getElementById('customTitle').value;
+            const titleSize = document.getElementById('titleSize').value;
+            const typeLabel = pageObj.type === 'sudoku' ? '數獨練習' : '數學計算';
+
+            // 列印時的 Header (Logo 置於左上角)
+            div.innerHTML = `
+                <div class="flex items-center justify-between mb-10 border-b-2 border-slate-800 pb-5">
+                    <div style="width:150px;">
+                        <img src="${currentLogo}" class="logo-box">
+                    </div>
+                    <div style="flex-grow: 1; text-align: center;">
+                        <div style="font-size: ${titleSize}px; font-weight: 900; color: #1e293b; letter-spacing: 2px;">
+                            ${titleText} ${pageObj.isAns ? '<span style="color:#ef4444;"> (解答卷) </span>' : ''}
+                        </div>
+                        <div style="font-size: 13px; font-weight: bold; color: #475569; margin-top: 6px; background: #f1f5f9; display: inline-block; padding: 2px 16px; border-radius: 999px;">
+                            ${typeLabel}
+                        </div>
+                    </div>
+                    <div style="width:150px; text-align:right; font-size:12px; color: #64748b; font-weight: bold;">
+                        姓名：__________
+                    </div>
+                </div>
+            `;
+
+            const content = document.createElement('div');
+            content.className = "flex-grow flex flex-col justify-around";
+
+            if (pageObj.type === 'sudoku') {
+                const gridWrap = document.createElement('div');
+                const perPage = pageObj.data.length;
+                gridWrap.className = `grid gap-x-12 gap-y-16 items-center ${perPage <= 2 ? 'grid-cols-1 px-20' : 'grid-cols-2'}`;
+                
+                pageObj.data.forEach((item, idx) => {
+                    gridWrap.appendChild(renderSudokuUnit(item, pageObj.isAns, idx, perPage));
+                });
+                content.appendChild(gridWrap);
+            } else {
+                const mathWrap = document.createElement('div');
+                const count = pageObj.data.length;
+                mathWrap.className = `grid gap-x-10 gap-y-3 ${count > 26 ? 'grid-cols-3' : 'grid-cols-2'}`;
+                
+                pageObj.data.forEach((item, idx) => {
+                    const itemDiv = document.createElement('div');
+                    itemDiv.className = "math-item";
+                    itemDiv.innerHTML = `
+                        <span class="mr-3 text-sm text-slate-300 font-mono font-black">${String(idx+1).padStart(2, '0')}.</span>
+                        <span class="font-bold text-slate-700">${item.q}</span>
+                        <span class="${pageObj.isAns ? 'ans-text' : 'invisible'} ml-2 underline decoration-red-400 decoration-4 underline-offset-4">${item.a}</span>
+                    `;
+                    mathWrap.appendChild(itemDiv);
+                });
+                content.appendChild(mathWrap);
+            }
+
+            div.appendChild(content);
+
+            // Footer
+            const footer = document.createElement('div');
+            footer.className = "mt-10 text-[11px] flex justify-between text-slate-400 font-bold border-t border-slate-100 pt-4 italic";
+            footer.innerHTML = `<span>設計者：吳淑菁 失智症個案管理師</span><span>產出：${typeLabel} | 時間：${new Date().toLocaleString()}</span>`;
+            div.appendChild(footer);
+
+            return div;
+        }
+
+        function renderSudokuUnit(item, isAns, idx, perPage) {
+            const container = document.createElement('div');
+            container.className = "flex flex-col items-center w-full";
+            const size = item.size;
+            const subW = size === 9 ? 3 : (size === 6 ? 3 : 2);
+            const subH = size === 9 ? 3 : (size === 6 ? 2 : 2);
+            
+            let fontSize = size === 4 ? "text-4xl" : (size === 9 && perPage === 2 ? "text-6xl" : "text-3xl");
+
+            let gridHTML = `<div class="text-[10px] mb-2 font-black text-slate-200 uppercase tracking-[4px]">Puzzle ${idx+1}</div>
+                            <div class="sudoku-grid shadow-2xl" style="grid-template-columns: repeat(${size}, 1fr);">`;
+            
+            const boardToUse = isAns ? item.board : item.puzzle;
+            const originalPuzzle = item.puzzle;
+
+            for (let r = 0; r < size; r++) {
+                for (let c = 0; c < size; c++) {
+                    let classes = `cell ${fontSize}`;
+                    if ((c + 1) % subW === 0 && c !== size - 1) classes += " border-r-bold";
+                    if ((r + 1) % subH === 0 && r !== size - 1) classes += " border-b-bold";
+                    
+                    const isNewVal = isAns && originalPuzzle[r][c] === "";
+                    const val = boardToUse[r][c];
+                    gridHTML += `<div class="${classes}" style="${isNewVal ? 'color: #ef4444;' : ''}">${val}</div>`;
+                }
+            }
+            gridHTML += `</div>`;
+            container.innerHTML = gridHTML;
+            return container;
+        }
+
+        window.onload = togglePanel;
+    </script>
+</body>
+</html>
